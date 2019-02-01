@@ -52,39 +52,40 @@ func TestUserAuthToken(t *testing.T) {
 				So(LookupToken, ShouldBeNil)
 			})
 
-			Convey("signing out should delete token and cookie if present", func() {
-				httpreq := &http.Request{Header: make(http.Header)}
-				httpreq.AddCookie(&http.Cookie{Name: userAuthTokenService.Cfg.LoginCookieName, Value: token.UnhashedToken})
+			Convey("signing out", func() {
+				fakeRequestWithCookie := func(value string) *models.ReqContext {
+					httpreq := &http.Request{Header: make(http.Header)}
+					httpreq.AddCookie(&http.Cookie{Name: userAuthTokenService.Cfg.LoginCookieName, Value: value})
 
-				ctx := &models.ReqContext{Context: &macaron.Context{
-					Req:  macaron.Request{Request: httpreq},
-					Resp: macaron.NewResponseWriter("POST", httptest.NewRecorder()),
-				},
-					Logger: log.New("fakelogger"),
+					return &models.ReqContext{Context: &macaron.Context{
+						Req:  macaron.Request{Request: httpreq},
+						Resp: macaron.NewResponseWriter("POST", httptest.NewRecorder()),
+					},
+						Logger: log.New("fakelogger"),
+					}
 				}
 
-				err = userAuthTokenService.SignOutUser(ctx)
-				So(err, ShouldBeNil)
+				Convey("with valid cookie", func() {
+					reqCtx := fakeRequestWithCookie(token.UnhashedToken)
+					err = userAuthTokenService.SignOutUser(reqCtx)
+					So(err, ShouldBeNil)
 
-				// makes sure we tell the browser to overwrite the cookie
-				cookieHeader := fmt.Sprintf("%s=; Path=/; Max-Age=0; HttpOnly", userAuthTokenService.Cfg.LoginCookieName)
-				So(ctx.Resp.Header().Get("Set-Cookie"), ShouldEqual, cookieHeader)
+					token, _ = ctx.getAuthTokenByID(token.Id)
+					So(token, ShouldBeNil)
+
+					// makes sure we tell the browser to overwrite the cookie
+					cookieHeader := fmt.Sprintf("%s=; Path=/; Max-Age=0; HttpOnly", userAuthTokenService.Cfg.LoginCookieName)
+					So(reqCtx.Resp.Header().Get("Set-Cookie"), ShouldEqual, cookieHeader)
+				})
+
+				Convey("with missing cookie", func() {
+					reqCtx := fakeRequestWithCookie("")
+
+					err = userAuthTokenService.SignOutUser(reqCtx)
+					So(err, ShouldNotBeNil)
+				})
 			})
 
-			Convey("signing out an none existing session should return an error", func() {
-				httpreq := &http.Request{Header: make(http.Header)}
-				httpreq.AddCookie(&http.Cookie{Name: userAuthTokenService.Cfg.LoginCookieName, Value: ""})
-
-				ctx := &models.ReqContext{Context: &macaron.Context{
-					Req:  macaron.Request{Request: httpreq},
-					Resp: macaron.NewResponseWriter("POST", httptest.NewRecorder()),
-				},
-					Logger: log.New("fakelogger"),
-				}
-
-				err = userAuthTokenService.SignOutUser(ctx)
-				So(err, ShouldNotBeNil)
-			})
 		})
 
 		Convey("expires correctly", func() {
